@@ -1,4 +1,6 @@
 import os
+from werkzeug.middleware.proxy_fix import ProxyFix
+from flask import url_for
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
@@ -11,7 +13,10 @@ from tasks import scan_gmail_accounts, send_daily_summary
 
 CFG = load_config()
 
+
+
 app = Flask(__name__)
+
 app.secret_key = CFG['FLASK_SECRET_KEY']
 
 # Database
@@ -89,13 +94,15 @@ def connect_gmail():
     if not account:
         flash('Missing ?account=email', 'warning')
         return redirect(url_for('index'))
-    authorization_url, state = gmail_mgr.build_authorize_url(account, redirect_uri=f"{CFG['BASE_URL']}/oauth2callback")
+    redirect_uri = url_for('oauth2callback', _external=True)
+    authorization_url, state = gmail_mgr.build_authorize_url(account, redirect_uri=redirect_uri)
     return redirect(authorization_url)
 
 @app.route('/connect/drive')
 def connect_drive():
     account = CFG['SERVICE_GOOGLE_ACCOUNT']
-    authorization_url, state = drive_mgr.build_authorize_url(account, redirect_uri=f"{CFG['BASE_URL']}/oauth2callback")
+    redirect_uri = url_for('oauth2callback', _external=True)
+    authorization_url, state = drive_mgr.build_authorize_url(account, redirect_uri=redirect_uri)
     return redirect(authorization_url)
 
 @app.route('/oauth2callback')
@@ -106,17 +113,20 @@ def oauth2callback():
         flash('OAuth failed: missing code/state', 'danger')
         return redirect(url_for('index'))
 
+    redirect_uri = url_for('oauth2callback', _external=True)
+
     if state.startswith('gmail:'):
         email = state.split(':',1)[1]
-        gmail_mgr.finish_authorize(email, code, redirect_uri=f"{CFG['BASE_URL']}/oauth2callback")
+        gmail_mgr.finish_authorize(email, code, redirect_uri=redirect_uri)
         flash(f'Gmail connected for {email}', 'success')
     elif state.startswith('drive:'):
         email = state.split(':',1)[1]
-        drive_mgr.finish_authorize(email, code, redirect_uri=f"{CFG['BASE_URL']}/oauth2callback")
+        drive_mgr.finish_authorize(email, code, redirect_uri=redirect_uri)
         flash(f'Drive connected for {email}', 'success')
     else:
         flash('Unknown OAuth state', 'danger')
     return redirect(url_for('index'))
+
 
 @app.route('/tasks/scan')
 def task_scan():
