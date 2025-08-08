@@ -7,3 +7,4 @@ google-auth-oauthlib==1.2.0
 APScheduler==3.10.4
 gunicorn==22.0.0
 psycopg2-binary==2.9.9
+MarkupSafe==2.1.5
