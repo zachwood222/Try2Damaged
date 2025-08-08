@@ -27,16 +27,33 @@ class GmailManager:
         return build('gmail', 'v1', credentials=creds)
 
     def build_authorize_url(self, email, redirect_uri):
-        flow = Flow.from_client_secrets_file(self.client_secrets_file, scopes=self.scopes, redirect_uri=redirect_uri)
+        flow = Flow.from_client_secrets_file(
+            self.client_secrets_file,
+            scopes=self.scopes,
+            redirect_uri=redirect_uri,
+        )
         state = f"gmail:{email}"
-        url, _ = flow.authorization_url(access_type='offline', include_granted_scopes='true', state=state)
-        return url, state
+        auth_url, _ = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='false',  # avoid Google adding openid/userinfo automatically
+            state=state
+        )
+        return auth_url, state
 
-    def finish_authorize(self, email, code, redirect_uri):
-        flow = Flow.from_client_secrets_file(self.client_secrets_file, scopes=self.scopes, redirect_uri=redirect_uri)
-        flow.fetch_token(code=code)
+    def finish_authorize(self, email, code, redirect_uri, returned_scope=None):
+        flow = Flow.from_client_secrets_file(
+            self.client_secrets_file,
+            scopes=self.scopes,
+            redirect_uri=redirect_uri,
+        )
+        # Pass back the returned_scope to avoid oauthlib scope-mismatch 500s
+        if returned_scope:
+            flow.fetch_token(code=code, scope=returned_scope)
+        else:
+            flow.fetch_token(code=code)
         creds = flow.credentials
-        self.token_store.save(email, 'gmail', creds)
+        with open(self._token_path(email), 'w') as f:
+            f.write(creds.to_json())
         return True
 
     def search_messages(self, email, query, max_results=25):
