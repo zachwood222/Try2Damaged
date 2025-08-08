@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: fowhand-damage-tracker
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --preload --workers=2 --threads=2 --timeout=120
+    autoDeploy: true
+    # No disk on free tier. Tokens are stored in Postgres via oauth_tokens table.
+    envVars:
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      # Set the following in the dashboard:
+      # - key: DATABASE_URL
+      # - key: GOOGLE_CLIENT_SECRETS
+      # - key: DRIVE_UPLOAD_FOLDER_ID
+      # - key: MONITORED_GMAIL_ACCOUNTS
+      # - key: SERVICE_GOOGLE_ACCOUNT
+      # - key: NOTIFY_EMAILS
+      # - key: TASKS_SECRET
