@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Tracked Items</h3>
+  <div>
+    <a class="btn btn-outline-primary btn-sm" href="/tasks/scan?secret={{config.TASKS_SECRET}}" onclick="return false;">Manual Scan (use cron)</a>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <form class="row g-2" method="get" action="/">
+      <div class="col-md-4">
+        <input type="text" class="form-control" name="q" value="{{ kw }}" placeholder="Search subject, snippet, sender...">
+      </div>
+      <div class="col-md-3">
+        <select class="form-select" name="status">
+          <option value="">All statuses</option>
+          <option value="NEW" {% if status=='NEW' %}selected{% endif %}>New</option>
+          <option value="RESOLVED" {% if status=='RESOLVED' %}selected{% endif %}>Resolved</option>
+          <option value="CREDIT_RECEIVED" {% if status=='CREDIT_RECEIVED' %}selected{% endif %}>Credit Received</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-primary w-100" type="submit">Filter</button>
+      </div>
+      <div class="col-md-3 text-end">
+        <div class="small text-muted">
+          <b>Connected Gmail:</b> {{ connected_gmails|join(', ') if connected_gmails else 'None' }}<br>
+          <b>Drive:</b> {{ 'OK' if drive_connected else 'Not connected' }} ({{ service_account }})
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="mb-4">
+  <h5>Connect Accounts (first-time only)</h5>
+  <ul>
+    {% for acct in monitored %}
+      <li>Gmail {{acct}} → <a href="/connect/gmail?account={{acct}}">Connect</a></li>
+    {% endfor %}
+    <li>Drive & Sender {{service_account}} → <a href="/connect/drive">Connect</a></li>
+  </ul>
+  <p class="text-muted small">After connecting, set up a cron to hit <code>/tasks/scan?secret=YOUR_TASKS_SECRET</code> every 5–10 minutes.</p>
+</div>
+
+<table class="table table-striped align-middle">
+  <thead>
+    <tr>
+      <th>When</th>
+      <th>From</th>
+      <th>Subject</th>
+      <th>Account</th>
+      <th>Status</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for i in items %}
+      <tr>
+        <td class="text-nowrap">{{ i.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ i.sender }}</td>
+        <td><a href="/detail/{{i.id}}">{{ i.subject or '(no subject)' }}</a><br><small class="text-muted">{{ i.snippet }}</small></td>
+        <td>{{ i.account_email }}</td>
+        <td>
+          <select class="form-select form-select-sm w-auto" onchange="updateStatus({{i.id}}, this.value)">
+            <option value="NEW" {% if i.status.value=='NEW' %}selected{% endif %}>New</option>
+            <option value="RESOLVED" {% if i.status.value=='RESOLVED' %}selected{% endif %}>Resolved</option>
+            <option value="CREDIT_RECEIVED" {% if i.status.value=='CREDIT_RECEIVED' %}selected{% endif %}>Credit Received</option>
+          </select>
+        </td>
+        <td><a class="btn btn-outline-secondary btn-sm" href="/detail/{{i.id}}">Open</a></td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<script>
+async function updateStatus(id, status){
+  try{
+    const r = await fetch(`/status/${id}/${status}`, {method:'POST'});
+    const j = await r.json();
+    if(!j.ok) alert('Failed: ' + j.error);
+  }catch(e){ alert('Error'); }
+}
+</script>
+{% endblock %}

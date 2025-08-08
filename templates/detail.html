@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block content %}
+<h3>Item Detail</h3>
+<div class="card mb-3">
+  <div class="card-body">
+    <p><b>From:</b> {{ item.sender }}<br>
+    <b>Subject:</b> {{ item.subject }}<br>
+    <b>Date:</b> {{ item.date }}<br>
+    <b>Account:</b> {{ item.account_email }}</p>
+    <p><b>Snippet:</b> {{ item.snippet }}</p>
+    <p>
+      <b>Status:</b>
+      <select class="form-select form-select-sm w-auto d-inline" onchange="updateStatus({{item.id}}, this.value)">
+        <option value="NEW" {% if item.status.value=='NEW' %}selected{% endif %}>New</option>
+        <option value="RESOLVED" {% if item.status.value=='RESOLVED' %}selected{% endif %}>Resolved</option>
+        <option value="CREDIT_RECEIVED" {% if item.status.value=='CREDIT_RECEIVED' %}selected{% endif %}>Credit Received</option>
+      </select>
+    </p>
+  </div>
+</div>
+
+<h5>Photos</h5>
+<div class="row g-3">
+  {% for p in item.photos %}
+  <div class="col-md-3">
+    <div class="card">
+      <a href="{{ p.web_view_link }}" target="_blank">
+        <img class="card-img-top" src="{{ p.web_content_link }}" alt="{{ p.filename }}">
+      </a>
+      <div class="card-body"><small>{{ p.filename }}</small></div>
+    </div>
+  </div>
+  {% else %}
+  <p class="text-muted">No photos.</p>
+  {% endfor %}
+</div>
+
+<script>
+async function updateStatus(id, status){
+  try{
+    const r = await fetch(`/status/${id}/${status}`, {method:'POST'});
+    const j = await r.json();
+    if(!j.ok) alert('Failed: ' + j.error);
+  }catch(e){ alert('Error'); }
+}
+</script>
+{% endblock %}
