@@ -109,9 +109,26 @@ def connect_drive():
 def oauth2callback():
     code = request.args.get('code')
     state = request.args.get('state')
+    returned_scope = request.args.get('scope')  # <-- capture scopes Google actually granted
     if not code or not state:
         flash('OAuth failed: missing code/state', 'danger')
         return redirect(url_for('index'))
+    redirect_uri = url_for('oauth2callback', _external=True)
+    try:
+        if state.startswith('gmail:'):
+            email = state.split(':',1)[1]
+            gmail_mgr.finish_authorize(email, code, redirect_uri=redirect_uri, returned_scope=returned_scope)
+            flash(f'Gmail connected for {email}', 'success')
+        elif state.startswith('drive:'):
+            email = state.split(':',1)[1]
+            drive_mgr.finish_authorize(email, code, redirect_uri=redirect_uri, returned_scope=returned_scope)
+            flash(f'Drive connected for {email}', 'success')
+        else:
+            flash('Unknown OAuth state', 'danger')
+    except Exception as e:
+        flash(f'OAuth callback error: {e}', 'danger')
+    return redirect(url_for('index'))
+    
 
     redirect_uri = url_for('oauth2callback', _external=True)
 
