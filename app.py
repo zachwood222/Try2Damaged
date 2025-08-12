@@ -98,12 +98,6 @@ def connect_gmail():
     authorization_url, state = gmail_mgr.build_authorize_url(account, redirect_uri=redirect_uri)
     return redirect(authorization_url)
 
-@app.route('/connect/drive')
-def connect_drive():
-    account = CFG['SERVICE_GOOGLE_ACCOUNT']
-    redirect_uri = url_for('oauth2callback', _external=True)
-    authorization_url, state = drive_mgr.build_authorize_url(account, redirect_uri=redirect_uri)
-    return redirect(authorization_url)
 
 # app.py (snippets)
 import os
