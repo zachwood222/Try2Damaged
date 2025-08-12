@@ -33,7 +33,7 @@ class DriveManager:
     def finish_authorize(self, email, code, redirect_uri, returned_scope=None):
         flow = Flow.from_client_secrets_file(self.client_secrets_file, scopes=self.scopes, redirect_uri=redirect_uri)
         if returned_scope:
-        flow.fetch_token(code=code, scope=returned_scope)
+            flow.fetch_token(code=code, scope=returned_scope)
         else:
             flow.fetch_token(code=code)
         creds = flow.credentials
