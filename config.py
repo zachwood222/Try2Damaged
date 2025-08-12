@@ -1,6 +1,11 @@
 import os
 from dotenv import load_dotenv
 
+GOOGLE_DRIVE_REDIRECT_URI = "https://fowhand-damage-tracker-u810.onrender.com/oauth2callback/drive"
+# If you have a Gmail callback, add it too:
+GOOGLE_GMAIL_REDIRECT_URI = "https://fowhand-damage-tracker-u810.onrender.com/oauth2callback"
+DEBUG_OAUTH = True
+
 def load_config():
     load_dotenv()
     return {
