@@ -1,12 +1,9 @@
 from datetime import datetime, timedelta
+from sqlalchemy import select
 from models import EmailItem, Photo, Status
 from email_utils import build_notification_html, build_daily_summary_html
 
 KEYWORDS_QUERY = 'newer_than:14d ("damage" OR "credit" OR "replacement")'
-
-def send_kenect_sms(phone_number: str, message: str):
-    # Placeholder for Kenect API call
-    print(f"[Kenect placeholder] Would send SMS to {phone_number}: {message}")
 
 def scan_gmail_accounts(session, gmail_mgr, drive_mgr, CFG):
     updated = 0
@@ -27,19 +24,27 @@ def scan_gmail_accounts(session, gmail_mgr, drive_mgr, CFG):
             date = headers.get('date','')
             snippet = full.get('snippet','')
 
-            item = EmailItem(gmail_message_id=msg_id, thread_id=full.get('threadId'),
-                             account_email=account, sender=sender, subject=subject, date=date,
-                             snippet=snippet, status=Status.NEW)
-            session.add(item)
-            session.flush()
+            item = EmailItem(
+                gmail_message_id=msg_id,
+                thread_id=full.get('threadId'),
+                account_email=account,
+                sender=sender,
+                subject=subject,
+                date=date,
+                snippet=snippet,
+                status=Status.NEW
+            )
+            session.add(item); session.flush()
 
             atts = gmail_mgr.fetch_attachments(account, full)
             photos = []
             for att in atts:
                 try:
+                    import hashlib
                     fid, view, content = drive_mgr.upload_photo(service_account, att['filename'], att['mimeType'], att['data'])
+                    sha = hashlib.sha256(att['data']).hexdigest()
                     p = Photo(email_item_id=item.id, filename=att['filename'], mime_type=att['mimeType'], size=att['size'],
-                              drive_file_id=fid, web_view_link=view, web_content_link=content)
+                              drive_file_id=fid, web_view_link=view, web_content_link=content, sha256=sha)
                     session.add(p); photos.append(p)
                 except Exception as e:
                     print('Drive upload error:', e)
@@ -52,11 +57,13 @@ def scan_gmail_accounts(session, gmail_mgr, drive_mgr, CFG):
                 print('Notification send error:', e)
 
             updated += 1
+
     return updated
 
 def send_daily_summary(session, gmail_mgr, CFG):
     since = datetime.utcnow() - timedelta(days=1)
     items = session.query(EmailItem).filter(EmailItem.created_at >= since).order_by(EmailItem.created_at.desc()).all()
+    from email_utils import build_daily_summary_html
     html = build_daily_summary_html(items)
     tos = [t.strip() for t in CFG['NOTIFY_EMAILS'].split(',') if t.strip()]
     try:
