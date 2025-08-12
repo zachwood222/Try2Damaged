@@ -105,44 +105,47 @@ def connect_drive():
     authorization_url, state = drive_mgr.build_authorize_url(account, redirect_uri=redirect_uri)
     return redirect(authorization_url)
 
-@app.route('/oauth2callback')
-def oauth2callback():
-    code = request.args.get('code')
-    state = request.args.get('state')
-    returned_scope = request.args.get('scope')  # <-- capture scopes Google actually granted
-    if not code or not state:
-        flash('OAuth failed: missing code/state', 'danger')
-        return redirect(url_for('index'))
-    redirect_uri = url_for('oauth2callback', _external=True)
+# app.py (snippets)
+import os
+from flask import Flask, request, session, redirect, url_for
+from drive_client import DriveManager
+
+app = Flask(__name__)
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
+
+drive_mgr = DriveManager(
+    client_secrets_file=os.getenv("GOOGLE_CLIENT_SECRETS_FILE", "client_secret.json"),
+    token_dir=os.getenv("GOOGLE_TOKEN_DIR", "tokens"),
+)
+
+@app.route("/connect/drive")
+def connect_drive():
+    email = request.args.get("email", "default@example.com")
+    # MUST exactly match one of your Google Console Authorized redirect URIs:
+    redirect_uri = url_for("oauth2callback_drive", _external=True, _scheme="https")
+    auth_url, flow_state = drive_mgr.build_authorize_url(email, redirect_uri)
+    session["oauth_email"] = email
+    session["oauth_state"] = flow_state
+    return redirect(auth_url)
+
+@app.route("/oauth2callback/drive")
+def oauth2callback_drive():
+    if "error" in request.args:
+        return f"Google error: {request.args['error']}", 400
+
+    email = session.get("oauth_email", "default@example.com")
+    redirect_uri = url_for("oauth2callback_drive", _external=True, _scheme="https")
+    # Use the full callback URL for fetch_token:
+    authorization_response_url = request.url
+    state = session.get("oauth_state")
+
     try:
-        if state.startswith('gmail:'):
-            email = state.split(':',1)[1]
-            gmail_mgr.finish_authorize(email, code, redirect_uri=redirect_uri, returned_scope=returned_scope)
-            flash(f'Gmail connected for {email}', 'success')
-        elif state.startswith('drive:'):
-            email = state.split(':',1)[1]
-            drive_mgr.finish_authorize(email, code, redirect_uri=redirect_uri, returned_scope=returned_scope)
-            flash(f'Drive connected for {email}', 'success')
-        else:
-            flash('Unknown OAuth state', 'danger')
+        drive_mgr.finish_authorize(email, authorization_response_url, redirect_uri, state=state)
+        return "Drive connected! You can close this tab."
     except Exception as e:
-        flash(f'OAuth callback error: {e}', 'danger')
-    return redirect(url_for('index'))
-    
+        app.logger.exception("OAuth callback failed")
+        return f"Callback failed: {e}", 500
 
-    redirect_uri = url_for('oauth2callback', _external=True)
-
-    if state.startswith('gmail:'):
-        email = state.split(':',1)[1]
-        gmail_mgr.finish_authorize(email, code, redirect_uri=redirect_uri)
-        flash(f'Gmail connected for {email}', 'success')
-    elif state.startswith('drive:'):
-        email = state.split(':',1)[1]
-        drive_mgr.finish_authorize(email, code, redirect_uri=redirect_uri)
-        flash(f'Drive connected for {email}', 'success')
-    else:
-        flash('Unknown OAuth state', 'danger')
-    return redirect(url_for('index'))
 
 
 @app.route('/tasks/scan')
