@@ -1,66 +1,81 @@
-import io
+# drive_client.py
+import os
+from pathlib import Path
+from typing import Tuple, Optional
+
 from google_auth_oauthlib.flow import Flow
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
+
+OPENID_SCOPES = [
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/userinfo.email",
+]
+
+def _sanitize(email: str) -> str:
+    return email.replace("/", "_").replace("\\", "_").replace(":", "_")
 
 class DriveManager:
-    def __init__(self, client_secrets_file, token_store, scopes, upload_folder_id):
-        self.client_secrets_file = client_secrets_file
-        self.token_store = token_store
-        self.scopes = scopes
-        self.upload_folder_id = upload_folder_id
+    def __init__(
+        self,
+        client_secrets_file: str = None,
+        token_dir: str = "tokens",
+        scopes: Optional[list] = None,
+    ):
+        self.client_secrets_file = client_secrets_file or os.getenv("GOOGLE_CLIENT_SECRETS_FILE", "client_secret.json")
+        self.token_dir = Path(token_dir)
+        self.token_dir.mkdir(parents=True, exist_ok=True)
+        self.scopes = scopes or OPENID_SCOPES
 
-    def is_connected(self, email):
-        creds = self.token_store.load(email, self.scopes)
-        return bool(creds and creds.valid)
+        if not Path(self.client_secrets_file).exists():
+            raise FileNotFoundError(f"Missing Google client secrets at {self.client_secrets_file}")
 
-    def _service(self, email):
-        creds = self.token_store.load(email, self.scopes)
-        if not creds or not creds.valid:
-            raise RuntimeError(f"No Drive credentials for {email}. Connect via UI.")
-        return build('drive', 'v3', credentials=creds)
+    def _token_path(self, email: str) -> Path:
+        return self.token_dir / f"{_sanitize(email)}.json"
 
-    from google_auth_oauthlib.flow import Flow
-from pathlib import Path
+    # ---- YOU CALLED THIS IN YOUR ROUTE ----
+    def build_authorize_url(self, email: str, redirect_uri: str) -> Tuple[str, str]:
+        flow = Flow.from_client_secrets_file(
+            self.client_secrets_file,
+            scopes=self.scopes,
+            redirect_uri=redirect_uri,
+        )
+        state = f"drive:{email}"
+        authorization_url, flow_state = flow.authorization_url(
+            access_type="offline",          # get refresh token
+            include_granted_scopes=True,    # boolean True (not string)
+            prompt="consent",               # ensures refresh token is returned
+            state=state,
+        )
+        return authorization_url, flow_state  # you can also return state if desired
 
-def build_authorize_url(self, email, redirect_uri):
-    flow = Flow.from_client_secrets_file(
-        self.client_secrets_file,
-        scopes=self.scopes,              # must match finish_authorize
-        redirect_uri=redirect_uri,
-    )
-    state = f"drive:{email}"
-    authorization_url, flow_state = flow.authorization_url(
-        access_type="offline",           # get refresh_token
-        include_granted_scopes=True,     # boolean, not string
-        prompt="consent",                # ensures refresh_token
-        state=state,
-    )
-    # You can return flow_state if you want to verify in the callback.
-    return authorization_url, state
+    # ---- YOU CALLED THIS IN YOUR CALLBACK ----
+    def finish_authorize(self, email: str, authorization_response_url: str, redirect_uri: str, state: Optional[str] = None) -> bool:
+        flow = Flow.from_client_secrets_file(
+            self.client_secrets_file,
+            scopes=self.scopes,
+            redirect_uri=redirect_uri,
+            state=state,
+        )
+        # Important: don't pass scope here; use the same scopes as the Flow
+        flow.fetch_token(authorization_response=authorization_response_url)
 
-def finish_authorize(self, email, code, redirect_uri, returned_scope=None):
-    flow = Flow.from_client_secrets_file(
-        self.client_secrets_file,
-        scopes=self.scopes,              # EXACT same list as above
-        redirect_uri=redirect_uri,
-        # state=<retrieve the saved state if you’re verifying CSRF>
-    )
-    # IMPORTANT: do NOT pass scope here
-    flow.fetch_token(code=code)
+        creds = flow.credentials
+        self._token_path(email).write_text(creds.to_json())
+        return True
 
-    creds = flow.credentials
-    token_path = Path(self._token_path(email))
-    token_path.parent.mkdir(parents=True, exist_ok=True)
-    token_path.write_text(creds.to_json())
-    return True
-
-
-    def upload_photo(self, email, filename, mime_type, data: bytes):
-        svc = self._service(email)
-        file_metadata = {'name': filename, 'parents': [self.upload_folder_id]}
-        media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mime_type, resumable=False)
-        file = svc.files().create(body=file_metadata, media_body=media, fields='id, webViewLink, webContentLink').execute()
-        file_id = file['id']
-        svc.permissions().create(fileId=file_id, body={'type':'anyone','role':'reader'}).execute()
-        return file_id, file.get('webViewLink'), file.get('webContentLink')
+    # Optional helper: load/refresh credentials later when calling APIs
+    def load_credentials(self, email: str) -> Optional[Credentials]:
+        token_file = self._token_path(email)
+        if not token_file.exists():
+            return None
+        creds = Credentials.from_authorized_user_file(str(token_file), scopes=self.scopes)
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            token_file.write_text(creds.to_json())
+        return creds
