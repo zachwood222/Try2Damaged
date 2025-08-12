@@ -20,26 +20,40 @@ class DriveManager:
             raise RuntimeError(f"No Drive credentials for {email}. Connect via UI.")
         return build('drive', 'v3', credentials=creds)
 
-    def build_authorize_url(self, email, redirect_uri):
-        flow = Flow.from_client_secrets_file(self.client_secrets_file, scopes=self.scopes, redirect_uri=redirect_uri)
-        state = f"drive:{email}"
-        url, _ = flow.authorization_url(
-            access_type='offline',
-            include_granted_scopes='false',  # avoid Google adding openid/userinfo automatically
-             state=state
-        )
-        return url, state
+    from google_auth_oauthlib.flow import Flow
+from pathlib import Path
 
-    def finish_authorize(self, email, code, redirect_uri, returned_scope=None):
-        flow = Flow.from_client_secrets_file(self.client_secrets_file, scopes=self.scopes, redirect_uri=redirect_uri)
-        if returned_scope:
-            flow.fetch_token(code=code, scope=returned_scope)
-        else:
-            flow.fetch_token(code=code)
-        creds = flow.credentials
-        with open(self._token_path(email), 'w') as f:
-            f.write(creds.to_json())
-        return True
+def build_authorize_url(self, email, redirect_uri):
+    flow = Flow.from_client_secrets_file(
+        self.client_secrets_file,
+        scopes=self.scopes,              # must match finish_authorize
+        redirect_uri=redirect_uri,
+    )
+    state = f"drive:{email}"
+    authorization_url, flow_state = flow.authorization_url(
+        access_type="offline",           # get refresh_token
+        include_granted_scopes=True,     # boolean, not string
+        prompt="consent",                # ensures refresh_token
+        state=state,
+    )
+    # You can return flow_state if you want to verify in the callback.
+    return authorization_url, state
+
+def finish_authorize(self, email, code, redirect_uri, returned_scope=None):
+    flow = Flow.from_client_secrets_file(
+        self.client_secrets_file,
+        scopes=self.scopes,              # EXACT same list as above
+        redirect_uri=redirect_uri,
+        # state=<retrieve the saved state if you’re verifying CSRF>
+    )
+    # IMPORTANT: do NOT pass scope here
+    flow.fetch_token(code=code)
+
+    creds = flow.credentials
+    token_path = Path(self._token_path(email))
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    token_path.write_text(creds.to_json())
+    return True
 
 
     def upload_photo(self, email, filename, mime_type, data: bytes):
