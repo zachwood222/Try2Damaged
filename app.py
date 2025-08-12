@@ -33,12 +33,7 @@ gmail_mgr = GmailManager(
     token_store=token_store,
     scopes=CFG['OAUTH_SCOPES'].split()
 )
-drive_mgr = DriveManager(
-    client_secrets_file=CFG['GOOGLE_CLIENT_SECRETS'],
-    token_store=token_store,
-    scopes=CFG['OAUTH_SCOPES'].split(),
-    upload_folder_id=CFG['DRIVE_UPLOAD_FOLDER_ID']
-)
+
 
 @app.teardown_appcontext
 def shutdown_session(exception=None):
