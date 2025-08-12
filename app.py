@@ -11,6 +11,51 @@ from drive_client import DriveManager
 from token_store import DBTokenStore
 from tasks import scan_gmail_accounts, send_daily_summary
 
+# ... keep your existing imports and the app/Session setup from my last message ...
+
+from flask import current_app
+
+DRIVE_REDIRECT_URI = CFG.get('GOOGLE_DRIVE_REDIRECT_URI')
+
+@app.route("/connect/drive")
+def connect_drive():
+    email = request.args.get("email") or CFG.get('SERVICE_GOOGLE_ACCOUNT') or "default@example.com"
+
+    # Use explicit redirect from config to avoid mismatch
+    redirect_uri = DRIVE_REDIRECT_URI or url_for("oauth2callback_drive", _external=True, _scheme="https")
+
+    try:
+        auth_url, flow_state = drive_mgr.build_authorize_url(email, redirect_uri)
+        session["oauth_email"] = email
+        session["oauth_state"] = flow_state
+
+        if CFG.get("DEBUG_OAUTH"):
+            current_app.logger.info("Drive OAuth start",
+                                    extra={"redirect_uri": redirect_uri, "auth_url": auth_url})
+
+        return redirect(auth_url)
+    except Exception as e:
+        current_app.logger.exception("Connect /drive failed")
+        return f"Connect failed: {e}", 500
+
+@app.route("/oauth2callback/drive")
+def oauth2callback_drive():
+    if "error" in request.args:
+        return f"Google error: {request.args['error']}", 400
+
+    email = session.get("oauth_email") or CFG.get('SERVICE_GOOGLE_ACCOUNT') or "default@example.com"
+    redirect_uri = DRIVE_REDIRECT_URI or url_for("oauth2callback_drive", _external=True, _scheme="https")
+    authorization_response_url = request.url
+    state = session.get("oauth_state")
+
+    try:
+        drive_mgr.finish_authorize(email, authorization_response_url, redirect_uri, state=state)
+        flash("Google Drive connected.", "success")
+        return redirect(url_for("index"))
+    except Exception as e:
+        current_app.logger.exception("OAuth callback (Drive) failed")
+        return f"Callback failed: {e}", 500
+
 CFG = load_config()
 
 app = Flask(__name__)
