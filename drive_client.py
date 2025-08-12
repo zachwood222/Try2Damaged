@@ -15,10 +15,10 @@ class DriveManager:
         return bool(creds and creds.valid)
 
     def _service(self, email):
-        creds = self.token_store.load(email, self.scopes)
-        if not creds or not creds.valid:
-            raise RuntimeError(f"No Drive credentials for {email}. Connect via UI.")
-        return build('drive', 'v3', credentials=creds)
+    creds = self.token_store.load(email, self.scopes)
+    if not creds or not creds.valid:
+        raise RuntimeError(f"No Drive credentials for {email}. Connect via UI.")
+    return build('drive', 'v3', credentials=creds)
 
     def build_authorize_url(self, email, redirect_uri):
         flow = Flow.from_client_secrets_file(self.client_secrets_file, scopes=self.scopes, redirect_uri=redirect_uri)
